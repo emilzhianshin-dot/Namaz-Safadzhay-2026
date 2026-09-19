@@ -74,6 +74,13 @@ private const val SOUND_URI_KEY = "notification_sound_uri"
 private const val NOTIFICATIONS_ENABLED_KEY = "notifications_enabled"
 private const val NOTIFY_BEFORE_MIN_KEY = "notify_before_min"
 private const val EXACT_ALARM_PROMPTED_KEY = "exact_alarm_prompted"
+private const val SHOW_TATAR_NAMES_KEY = "show_tatar_names"
+
+private fun showTatarNames(context: Context): Boolean =
+    context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE).getBoolean(SHOW_TATAR_NAMES_KEY, true)
+
+private fun prayerDisplayName(context: Context, russian: String, tatar: String): String =
+    if (showTatarNames(context) && tatar.isNotBlank()) "$russian ($tatar)" else russian
 
 private fun selectedNotificationSound(context: Context): Uri {
     val prefs = context.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
@@ -798,7 +805,7 @@ class MainActivity : Activity() {
         }
         prayerKeys.indices.forEach { i ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            row.addView(text("${prayerRussian[i]} (${prayerTatar[i]})", 16f, Color.WHITE, false).apply { gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(58), 1f))
+            row.addView(text(prayerDisplayName(this, prayerRussian[i], prayerTatar[i]), 16f, Color.WHITE, false).apply { gravity = Gravity.CENTER_VERTICAL }, LinearLayout.LayoutParams(0, dp(58), 1f))
             val sw = Switch(this).apply { isChecked = checked[i]; setOnCheckedChangeListener { _, v -> checked[i] = v } }
             row.setOnClickListener { sw.isChecked = !sw.isChecked }
             row.addView(sw, LinearLayout.LayoutParams(dp(58), dp(58)))
@@ -903,6 +910,22 @@ class MainActivity : Activity() {
         root.addView(screenRow(R.drawable.ic_notification, "Уведомления", if (prefs.getBoolean(NOTIFICATIONS_ENABLED_KEY, true)) "Включены" else "Выключены") { showNotificationsScreen { showSettingsDialog() } }, LinearLayout.LayoutParams(-1, dp(64)).apply { topMargin = dp(12) })
         root.addView(screenRow(R.drawable.ic_location, "Город", selectedCity) { showCityChoice { showSettingsDialog() } }, LinearLayout.LayoutParams(-1, dp(64)).apply { topMargin = dp(8) })
 
+        root.addView(Switch(this).apply {
+            text = "Дублировать названия\nна татарском"
+            textSize = 16f
+            setTextColor(ink)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            minimumHeight = dp(72)
+            switchPadding = dp(12)
+            background = surface()
+            isChecked = prefs.getBoolean(SHOW_TATAR_NAMES_KEY, true)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(SHOW_TATAR_NAMES_KEY, checked).apply()
+                update()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+
         root.addView(screenRow("ⓘ", "О приложении", "Версия ${packageManager.getPackageInfo(packageName, 0).versionName}") {
             showAboutDialog()
         }, LinearLayout.LayoutParams(-1, dp(64)).apply { topMargin = dp(8) })
@@ -973,7 +996,7 @@ class MainActivity : Activity() {
             val message = when {
                 !compass.hasCompass() -> "На телефоне нет поддерживаемого датчика компаса. Направление недоступно."
                 !hasLocation -> locationDescription
-                !compass.hasOrientation() -> "Настраиваем компас…\nДержите телефон плашмя"
+                !compass.hasOrientation() -> "Определяем направление…\nДержите телефон плашмя"
                 lowAccuracy -> "Держите телефон плашмя, вдали от металла и магнитов.\nПри необходимости выполните калибровку."
                 aligned -> "Вы направлены к кибле"
                 else -> "Поверните телефон\nСовместите Каабу с меткой сверху"
@@ -1372,7 +1395,7 @@ class MainActivity : Activity() {
             val left = Duration.between(now, nextEvent.time).seconds.coerceAtLeast(0)
             progress.progress = (1.0 - left.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
             countdown.text = String.format("%02d:%02d:%02d", left / 3600, (left % 3600) / 60, left % 60)
-            nextName.text = "${nextEvent.prayer.name} (${nextEvent.prayer.tatar})"
+            nextName.text = prayerDisplayName(this, nextEvent.prayer.name, nextEvent.prayer.tatar)
             countdownLabel.visibility = View.GONE
             countdownStart.text = "До начала намаза · ${nextEvent.prayer.time}"
         } else {
@@ -1385,7 +1408,7 @@ class MainActivity : Activity() {
                 val left = Duration.between(now, nextFajr).seconds.coerceAtLeast(0)
                 progress.progress = (1.0 - left.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
                 countdown.text = String.format("%02d:%02d:%02d", left / 3600, (left % 3600) / 60, left % 60)
-                nextName.text = "Фаджр (Иртәнге намаз)"
+                nextName.text = prayerDisplayName(this, "Фаджр", "Иртәнге намаз")
                 countdownLabel.visibility = View.GONE
                 countdownStart.text = "Завтра · ${tomorrowDay.fajr}"
             } else {
@@ -1426,15 +1449,18 @@ class MainActivity : Activity() {
     }
 
     private fun updateTodayEventBanner(today: LocalDate) {
-        val items = eventsFor(today)
+        val now = LocalDateTime.now(zone)
+        val asr = dayFor(today)?.asr?.let { runCatching { java.time.LocalTime.parse(it) }.getOrNull() }
+        val items = HolidayCalendar.bannerLabels(today, now, asr)
         if (items.isEmpty()) { eventBanner.text = ""; eventBanner.visibility = View.GONE; return }
         eventBanner.visibility = View.VISIBLE
-        val prefix = if (today == LocalDate.now(zone)) "Сегодня: " else ""
+        val prefix = if (today == now.toLocalDate()) "Сегодня: " else ""
         eventBanner.text = items.joinToString("\n") { prefix + it }
     }
 
     private fun renderPrayers(prayers: List<Prayer>, nextIndex: Int, now: LocalDateTime, displayDate: LocalDate) {
-        val renderKey = "$selectedCity|$displayDate|$nextIndex|${now.toLocalDate()}|${now.hour}:${now.minute}|${prayers.joinToString()}"
+        val showTatar = showTatarNames(this)
+        val renderKey = "$selectedCity|$displayDate|$nextIndex|${now.toLocalDate()}|${now.hour}:${now.minute}|$showTatar|${prayers.joinToString()}"
         if (lastPrayerRender == renderKey) return
         lastPrayerRender = renderKey
         prayerList.removeAllViews()
@@ -1462,6 +1488,7 @@ class MainActivity : Activity() {
                 maxLines = 2
             }
             val tt = text("(${p.tatar})", 13f, Color.rgb(171, 202, 190), false).apply {
+                visibility = if (showTatar) View.VISIBLE else View.GONE
                 gravity = Gravity.START
                 setIncludeFontPadding(false)
                 maxLines = 2
@@ -1564,7 +1591,7 @@ class PrayerNotificationReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Напоминание: $prayer ($tatar)")
+            .setContentTitle("Напоминание: ${prayerDisplayName(context, prayer, tatar)}")
             .setContentText(reminderText)
             .setContentIntent(openAppPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

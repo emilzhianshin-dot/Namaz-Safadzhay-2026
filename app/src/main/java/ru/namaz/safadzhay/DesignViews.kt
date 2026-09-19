@@ -127,7 +127,7 @@ internal class QiblaCompassView(context: Context) : View(context), SensorEventLi
             if (!a || !m) sensors.unregisterListener(this)
             a && m
         }
-        notifyDirection()
+        notifyDirection(); invalidate()
     }
     fun stop() { sensors.unregisterListener(this); registered = false; initialized = false; notifyDirection(); invalidate() }
     override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
@@ -190,6 +190,36 @@ internal class QiblaCompassView(context: Context) : View(context), SensorEventLi
         paint.style = Paint.Style.FILL; paint.color = Color.rgb(91, 224, 164)
         canvas.drawRoundRect(cx-density*2, cy-radius-density*4, cx+density*2, cy-radius+density*10, density*2, density*2, paint)
         val target = bearing
+        // Fill the first frame with an explicit pending state. A cached needle
+        // would be misleading if the phone moved while the compass was closed.
+        if (target == null || !initialized) {
+            val waitingForSensor = registered && !initialized
+            val ringRadius = radius * .16f
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = density * 2.5f
+            paint.color = Color.rgb(31, 89, 65)
+            canvas.drawCircle(cx, cy - radius * .12f, ringRadius, paint)
+            if (waitingForSensor) {
+                paint.color = Color.rgb(91, 224, 164)
+                val phase = (android.os.SystemClock.uptimeMillis() % 1000L) * .36f
+                canvas.drawArc(cx-ringRadius, cy-radius*.12f-ringRadius,
+                    cx+ringRadius, cy-radius*.12f+ringRadius, phase, 100f, false, paint)
+                if (isAttachedToWindow && windowVisibility == VISIBLE) postInvalidateDelayed(32L)
+            }
+            paint.style = Paint.Style.FILL
+            paint.typeface = Typeface.DEFAULT
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = radius * .12f
+            paint.color = Color.rgb(228, 243, 234)
+            val message = when {
+                !hasCompass() -> "Компас недоступен"
+                waitingForSensor -> "Определяем направление…"
+                !initialized -> "Нет показаний компаса"
+                else -> "Нужно местоположение"
+            }
+            canvas.drawText(message, cx, cy + radius * .23f, paint)
+            return
+        }
         if (target != null && initialized) {
             val angle = target - heading
             canvas.save(); canvas.rotate(angle, cx, cy)
