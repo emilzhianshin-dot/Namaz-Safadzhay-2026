@@ -33,7 +33,7 @@ assert 'android.permission.ACCESS_BACKGROUND_LOCATION' not in permissions
 app = manifest.find('application')
 assert app.get(ns+'allowBackup') == 'false'
 build = (ROOT / 'app/build.gradle.kts').read_text()
-for required in ['applicationId = "ru.namaz.safadzhay"','versionCode = 31','versionName = "1.2"','namaz-release.jks','isDebuggable = false']:
+for required in ['applicationId = "ru.namaz.safadzhay"','versionCode = 34','versionName = "1.2-test2"','namaz-release.jks','isDebuggable = false']:
     assert required in build, required
 assert not (ROOT / 'app/namaz-test.jks').exists()
 assert (ROOT / 'app/namaz-release.jks').is_file()

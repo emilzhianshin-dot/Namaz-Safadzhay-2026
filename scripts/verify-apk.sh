@@ -5,8 +5,8 @@ APK="${1:-app/build/outputs/apk/release/app-release.apk}"
 TOOLS="$ANDROID_HOME/build-tools/35.0.0"
 "$TOOLS/aapt" dump badging "$APK" > apk-badging.txt
 grep -q "package: name='ru.namaz.safadzhay'" apk-badging.txt
-grep -Fq "versionName='1.2'" apk-badging.txt
-grep -Fq "versionCode='31'" apk-badging.txt
+grep -Fq "versionName='1.2-test2'" apk-badging.txt
+grep -Fq "versionCode='34'" apk-badging.txt
 if grep -q 'ТЕСТ' apk-badging.txt; then exit 1; fi
 grep -q "launchable-activity: name='ru.namaz.safadzhay.MainActivity'" apk-badging.txt
 if grep -q "uses-permission: name='android.permission.INTERNET'" apk-badging.txt; then
