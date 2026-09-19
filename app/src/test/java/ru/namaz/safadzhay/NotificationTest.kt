@@ -6,6 +6,10 @@ import android.content.*
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.*
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Switch
+import android.widget.TextView
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -83,6 +87,56 @@ class NotificationTest {
         assertEquals(5, shadowOf(nm).allNotifications.size)
         fire("fajr")
         assertEquals(5, shadowOf(nm).allNotifications.size)
+    }
+
+    @Test fun notificationUsesCurrentLanguageSettingEvenForAlreadyScheduledPrayer() {
+        prefs.edit().putBoolean("show_tatar_names", false).apply()
+        fire()
+        assertEquals("Напоминание: Фаджр", onlyNotification().extras.getString(Notification.EXTRA_TITLE))
+        prefs.edit().putBoolean("show_tatar_names", true).apply()
+        fire()
+        assertEquals("Напоминание: Фаджр (Иртәнге намаз)", onlyNotification().extras.getString(Notification.EXTRA_TITLE))
+    }
+
+    private fun descendants(view: View): List<View> = listOf(view) +
+        if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) } else emptyList()
+
+    @Test fun tatarSwitchImmediatelyRefreshesScheduleAndPersistsAfterActivityRestart() {
+        val state = Bundle().apply {
+            putBoolean("schedule_tab", true)
+            putString("selected_date", "2026-09-18")
+        }
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create(state)
+        try {
+            val activity = controller.get()
+            waitForScheduler(activity)
+            val list = ReflectionHelpers.getField<ViewGroup>(activity, "prayerList")
+            fun visibleNames() = descendants(list).filterIsInstance<TextView>()
+                .filter { it.visibility == View.VISIBLE }.map { it.text.toString() }
+            assertTrue(visibleNames().contains("(Иртәнге намаз)"))
+            val russianSize = descendants(list).filterIsInstance<TextView>().first { it.text == "Фаджр" }.textSize
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "showSettingsDialog")
+            val dialog = ReflectionHelpers.getField<Dialog>(activity, "settingsPanel")
+            val toggle = descendants(dialog.window!!.decorView).filterIsInstance<Switch>().single()
+            assertTrue(toggle.isChecked)
+            toggle.isChecked = false
+            assertFalse(prefs.getBoolean("show_tatar_names", true))
+            assertFalse(visibleNames().contains("(Иртәнге намаз)"))
+            assertTrue(visibleNames().contains("Фаджр"))
+            assertEquals(russianSize, descendants(list).filterIsInstance<TextView>().first { it.text == "Фаджр" }.textSize, 0f)
+        } finally { controller.destroy() }
+        val restarted = Robolectric.buildActivity(MainActivity::class.java).create(state)
+        try {
+            val activity = restarted.get()
+            waitForScheduler(activity)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "showSettingsDialog")
+            val dialog = ReflectionHelpers.getField<Dialog>(activity, "settingsPanel")
+            val toggle = descendants(dialog.window!!.decorView).filterIsInstance<Switch>().single()
+            assertFalse(toggle.isChecked)
+            toggle.isChecked = true
+            val list = ReflectionHelpers.getField<ViewGroup>(activity, "prayerList")
+            assertTrue(descendants(list).filterIsInstance<TextView>().any { it.visibility == View.VISIBLE && it.text == "(Иртәнге намаз)" })
+        } finally { restarted.destroy() }
     }
 
     @Test fun disabledNotificationsSuppressDeliveryAndNextAlarm() {
