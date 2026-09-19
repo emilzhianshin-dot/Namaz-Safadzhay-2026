@@ -20,17 +20,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
       - name: Install Android build tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Check files and original prayer times BEFORE build
         run: python3 scripts/preflight.py
-      - name: Compile, unit-test, lint and build stable APK
+      - name: Compile, unit-test, lint and build test APK
         run: gradle --no-daemon --console=plain :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
-      - name: Verify stable package and certificate
+      - name: Verify test package and certificate
         run: bash scripts/verify-apk.sh
       - name: Name APK clearly
         run: cp app/build/outputs/apk/release/app-release.apk Namaz_Vakytylary_1.2-test2.apk
-      - name: Upload stable APK
+      - name: Upload test APK
         uses: actions/upload-artifact@v5
         with:
           name: Namaz-Vakytylary-1.2-test2
